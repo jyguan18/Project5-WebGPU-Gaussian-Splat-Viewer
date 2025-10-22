@@ -55,9 +55,9 @@ struct Gaussian {
     scale: array<u32,2>
 };
 
-struct Splat {
+//struct Splat {
     //TODO: store information for 2D splat rendering
-};
+//};
 
 //TODO: bind your data here
 @group(2) @binding(0)

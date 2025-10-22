@@ -3,16 +3,18 @@ struct VertexOutput {
     //TODO: information passed from vertex shader to fragment shader
 };
 
-struct Splat {
+//struct Splat {
     //TODO: information defined in preprocess compute shader
-};
+//};
 
 @vertex
 fn vs_main(
+    @location(0) pos: vec4<f32>
 ) -> VertexOutput {
     //TODO: reconstruct 2D quad based on information from splat, pass 
     var out: VertexOutput;
-    out.position = vec4<f32>(1. ,1. , 0., 1.);
+    // out.position = vec4<f32>(1. ,1. , 0., 1.);
+    out.position = pos;
     return out;
 }
 
