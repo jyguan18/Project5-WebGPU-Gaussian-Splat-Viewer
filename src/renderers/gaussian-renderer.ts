@@ -103,6 +103,10 @@ export default function get_renderer(
         binding: 0,
         resource: { buffer: splat_buffer },
       },
+      {
+        binding: 1,
+        resource: { buffer: sorter.ping_pong[0].sort_indices_buffer },
+      },
     ],
   });
 

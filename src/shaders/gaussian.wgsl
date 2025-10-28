@@ -1,6 +1,7 @@
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
     //TODO: information passed from vertex shader to fragment shader
+    @location(0) size: vec2<f32>, 
 };
 struct Splat {
     //TODO: information defined in preprocess compute shader
@@ -10,6 +11,7 @@ struct Splat {
 };
 
 @group(0) @binding(0) var<storage, read> splats: array<Splat>;
+@group(0) @binding(1) var<storage, read> sort_indices: array<u32>;
 
 @vertex
 fn vs_main(
@@ -17,7 +19,7 @@ fn vs_main(
     @builtin(vertex_index) vertex_idx: u32
 ) -> VertexOutput {
     //TODO: reconstruct 2D quad based on information from splat, pass
-    let idx = instance_idx;
+    let idx = sort_indices[instance_idx];
     let splat = splats[idx];
 
     let xy = unpack2x16float(splat.pos_size[0]);
@@ -40,10 +42,12 @@ fn vs_main(
     var vertex_out: VertexOutput;
 
     vertex_out.position = vec4f(quads[vertex_idx].x, quads[vertex_idx].y, 0.0f, 1.0f);
+
+    vertex_out.size = wh;
     return vertex_out;
 }
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return vec4<f32>(1., 0., 0., 1.);
+    return vec4<f32>(in.size.x, in.size.y, 0.0, 1.0);
 }
