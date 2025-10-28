@@ -69,6 +69,8 @@ var<uniform> camera: CameraUniforms;
 var<storage, read> gaussians: array<Gaussian>;
 @group(3) @binding(0)
 var<storage, read_write> splats: array<Splat>;
+@group(3) @binding(1)
+var<uniform> render_settings: RenderSettings;
 
 @group(2) @binding(0)
 var<storage, read_write> sort_infos: SortInfos;
@@ -180,7 +182,8 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     // let color = computeColorFromSH(view_dir, idx, 3u);
 
     splats[idx].pos_size[0] = pack2x16float(pos_ndc.xy);
-    splats[idx].pos_size[1] = pack2x16float(vec2f(0.01f, 0.01f));
+
+    splats[idx].pos_size[1] = pack2x16float(vec2f(0.01f, 0.01f) * render_settings.gaussian_scaling);
     splats[idx].conic[0] = 0u;
     splats[idx].conic[1] = 0u;
     let color = vec3<f32>(1.0, 1.0, 1.0);

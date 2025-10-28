@@ -4,7 +4,9 @@ import renderWGSL from "../shaders/gaussian.wgsl";
 import { get_sorter, c_histogram_block_rows, C } from "../sort/sort";
 import { Renderer } from "./renderer";
 
-export interface GaussianRenderer extends Renderer {}
+export interface GaussianRenderer extends Renderer {
+  render_settings_buffer: GPUBuffer;
+}
 
 // Utility to create GPU buffers
 const createBuffer = (
@@ -50,7 +52,7 @@ export default function get_renderer(
     null
   );
 
-  const indirect_buffer_data = new Uint32Array([6, pc.num_points, 0, 0]);
+  const indirect_buffer_data = new Uint32Array([6, 0, 0, 0]);
 
   const indirect_buffer = createBuffer(
     device,
@@ -58,6 +60,14 @@ export default function get_renderer(
     indirect_buffer_data.byteLength,
     GPUBufferUsage.INDIRECT | GPUBufferUsage.COPY_DST,
     indirect_buffer_data
+  );
+
+  const render_settings_buffer = createBuffer(
+    device,
+    "render settings buffer",
+    8,
+    GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
+    new Float32Array([1.0, pc.sh_deg])
   );
 
   // ===============================================
@@ -86,7 +96,7 @@ export default function get_renderer(
   });
 
   const render_pipeline_bind_group = device.createBindGroup({
-    label: "render_pipeline_bind_group",
+    label: "render pipeline bind group",
     layout: render_pipeline.getBindGroupLayout(0),
     entries: [
       {
@@ -135,12 +145,16 @@ export default function get_renderer(
   });
 
   const compute_pipeline_bind_group = device.createBindGroup({
-    label: "compute_pipeline_bind_group",
+    label: "compute pipeline bind group",
     layout: preprocess_pipeline.getBindGroupLayout(3),
     entries: [
       {
         binding: 0,
         resource: { buffer: splat_buffer },
+      },
+      {
+        binding: 1,
+        resource: { buffer: render_settings_buffer },
       },
     ],
   });
@@ -232,5 +246,6 @@ export default function get_renderer(
       render_pass.end();
     },
     camera_buffer,
+    render_settings_buffer,
   };
 }
