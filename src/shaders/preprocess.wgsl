@@ -144,14 +144,14 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let gaussian = gaussians[idx];
 
     let pos_packed = gaussian.pos_opacity[0];
-    let x = unpack2x16float(pos_packed).x;
-    let y = unpack2x16float(pos_packed).y;
+    let pos_x = unpack2x16float(pos_packed).x;
+    let pos_y = unpack2x16float(pos_packed).y;
 
     let z_op_packed = gaussian.pos_opacity[1];
-    let z = unpack2x16float(z_op_packed).x;
+    let op_z = unpack2x16float(z_op_packed).x;
     let opacity = unpack2x16float(z_op_packed).y;
 
-    let pos_world = vec4<f32>(x,y,z, 1.0);
+    let pos_world = vec4<f32>(pos_x,pos_y,op_z, 1.0);
 
     // transform to view space
     let pos_view = camera.view * vec4<f32>(pos_world);
@@ -173,6 +173,83 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
         return;
     }
 
+    let r01 = unpack2x16float(gaussian.rot[0]);
+    let r23 = unpack2x16float(gaussian.rot[1]);
+    let rot = vec4<f32>(r01.x, r01.y, r23.x, r23.y);
+
+    let r = rot.x;
+    let x = rot.y;
+    let y = rot.z;
+    let z = rot.w;
+
+    let R = mat3x3f(
+        1.0f - 2.0f * (y * y + z * z), 2.0f * (x * y - r * z), 2.0f * (x * z + r * y),
+        2.0f * (x * y + r * z), 1.0f - 2.0f * (x * x + z * z), 2.0f * (y * z - r * x),
+        2.0f * (x * z - r * y), 2.0f * (y * z + r * x), 1.0f - 2.0f * (x * x + y * y)
+    );
+
+    let scale01 = unpack2x16float(gaussian.scale[0]);
+    let scale23 = unpack2x16float(gaussian.scale[1]);
+
+    let scale = exp(vec3f(scale01.x, scale01.y, scale23.x));
+
+    let S = mat3x3f(
+        scale.x * render_settings.gaussian_scaling, 0.0f, 0.0f,
+        0.0f, scale.y * render_settings.gaussian_scaling, 0.0f,
+        0.0f, 0.0f, scale.z * render_settings.gaussian_scaling
+    );
+
+    let covar_matrix_3D = transpose(S * R) * S * R;
+
+    let covar_3D = array<f32, 6>(
+        covar_matrix_3D[0][0],
+        covar_matrix_3D[0][1],
+        covar_matrix_3D[0][2],
+        covar_matrix_3D[1][1],
+        covar_matrix_3D[1][2],
+        covar_matrix_3D[2][2],
+    );
+
+    let J = mat3x3f(
+        camera.focal.x / pos_view.z, 0.0f, -(camera.focal.x * pos_view.x) / (pos_view.z * pos_view.z),
+        0.0f, camera.focal.y / pos_view.z, -(camera.focal.y * pos_view.y) / (pos_view.z * pos_view.z),
+        0.0f, 0.0f, 0.0f
+    );
+
+    let W = transpose(mat3x3f(
+        camera.view[0].xyz, camera.view[1].xyz, camera.view[2].xyz
+    ));
+
+    let T = W * J;
+
+    let V = mat3x3f(
+        covar_3D[0], covar_3D[1], covar_3D[2],
+        covar_3D[1], covar_3D[3], covar_3D[4],
+        covar_3D[2], covar_3D[4], covar_3D[5],
+    );
+
+    var covar_matrix_2D = transpose(T) * transpose(V) * T;
+    covar_matrix_2D[0][0] += 0.3f;
+    covar_matrix_2D[1][1] += 0.3f;
+
+    let covar_2D = vec3(
+        covar_matrix_2D[0][0],
+        covar_matrix_2D[0][1],
+        covar_matrix_2D[1][1]
+    );
+
+    let determinant = covar_2D.x * covar_2D.z - (covar_2D.y * covar_2D.y);
+
+    if (determinant == 0.0f) {
+        return;
+    }
+
+    let mid = (covar_2D.x + covar_2D.z) * 0.5f;
+    let lambda1 = mid + sqrt(max(0.1f, mid * mid - determinant));
+    let lambda2 = mid - sqrt(max(0.1f, mid * mid - determinant));
+    let radius = ceil(3.0f * sqrt(max(lambda1, lambda2)));
+
+
     // depth for sort
     let depth = pos_view.z;
     sort_depths[idx] = bitcast<u32>(depth);
@@ -183,7 +260,7 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
 
     splats[idx].pos_size[0] = pack2x16float(pos_ndc.xy);
 
-    splats[idx].pos_size[1] = pack2x16float(vec2f(0.01f, 0.01f) * render_settings.gaussian_scaling);
+    splats[idx].pos_size[1] = pack2x16float(vec2(radius, radius) / camera.viewport);
     splats[idx].conic[0] = 0u;
     splats[idx].conic[1] = 0u;
     let color = vec3<f32>(1.0, 1.0, 1.0);
