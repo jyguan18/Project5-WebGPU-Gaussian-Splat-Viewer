@@ -145,6 +145,10 @@ export default function get_renderer(
         binding: 0,
         resource: { buffer: pc.gaussian_3d_buffer },
       },
+      {
+        binding: 1,
+        resource: { buffer: pc.sh_buffer },
+      },
     ],
   });
 

@@ -1,7 +1,8 @@
 struct VertexOutput {
     @builtin(position) position: vec4<f32>,
     //TODO: information passed from vertex shader to fragment shader
-    @location(0) size: vec2<f32>, 
+    @location(0) size: vec2<f32>,
+    @location(1) color: vec3<f32>,
 };
 struct Splat {
     //TODO: information defined in preprocess compute shader
@@ -44,10 +45,15 @@ fn vs_main(
     vertex_out.position = vec4f(quads[vertex_idx].x, quads[vertex_idx].y, 0.0f, 1.0f);
 
     vertex_out.size = wh;
+
+    let rg = unpack2x16float(splat.color_sh[0]);
+    let ba = unpack2x16float(splat.color_sh[1]);
+    vertex_out.color = vec3<f32>(rg.x, rg.y, ba.x);
+
     return vertex_out;
 }
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return vec4<f32>(in.size.x, in.size.y, 0.0, 1.0);
+    return vec4<f32>(in.color, 1.0);
 }

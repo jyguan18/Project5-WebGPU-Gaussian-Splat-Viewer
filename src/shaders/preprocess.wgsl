@@ -67,6 +67,8 @@ struct Splat {
 var<uniform> camera: CameraUniforms;
 @group(1) @binding(0)
 var<storage, read> gaussians: array<Gaussian>;
+@group(1) @binding(1)
+var<storage, read> sh_coeffs: array<u32>;
 @group(3) @binding(0)
 var<storage, read_write> splats: array<Splat>;
 @group(3) @binding(1)
@@ -85,19 +87,20 @@ var<storage, read_write> sort_dispatch: DispatchIndirect;
 fn sh_coef(splat_idx: u32, c_idx: u32) -> vec3<f32> {
     //TODO: access your binded sh_coeff, see load.ts for how it is stored
 
-    //let max_num_coefs = 16u;
-    //let base_idx = splat_idx * max_num_coefs * 3u / 2u;
-    //let coef_offset = c_idx * 3u / 2u;
-    
-    //let packed_rg = sh_coeffs[base_idx + coef_offset];
-    //let packed_b = sh_coeffs[base_idx + coef_offset + 1u];
-    
-    //let r = unpack2x16float(packed_rg).x;
-    //let g = unpack2x16float(packed_rg).y;
-    //let b = unpack2x16float(packed_b).x;
-    
-    //return vec3<f32>(r, g, b);
-    return vec3<f32>(0.0);
+    let max_num_coefs = 16u;
+    let base_idx = splat_idx * max_num_coefs * 3u / 2u;
+
+    let coef_offset = c_idx * 3u / 2u;
+    let packed_rg = sh_coeffs[base_idx + coef_offset];
+    let packed_b = sh_coeffs[base_idx + coef_offset + 1u];
+    let color01 = unpack2x16float(packed_rg);
+    let color23 = unpack2x16float(packed_b);
+
+    if (c_idx % 2u == 0u) {
+        return vec3<f32>(color01.x, color01.y, color23.x);
+    } else {
+        return vec3<f32>(color01.y, color23.x, color23.y);
+    }    
 }
 
 // spherical harmonics evaluation with Condon–Shortley phase
@@ -252,18 +255,17 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
 
     // depth for sort
     let depth = pos_view.z;
-    sort_depths[idx] = bitcast<u32>(depth);
+    sort_depths[idx] = bitcast<u32>(100.0f - depth);
     sort_indices[idx] = idx;
 
-    // let view_dir = normalize(pos_world - camera.view_inv[3].xyz);
-    // let color = computeColorFromSH(view_dir, idx, 3u);
+    let view_dir = normalize(pos_world.xyz - camera.view_inv[3].xyz);
+    let color = computeColorFromSH(view_dir, idx, u32(render_settings.sh_deg));
 
     splats[idx].pos_size[0] = pack2x16float(pos_ndc.xy);
 
     splats[idx].pos_size[1] = pack2x16float(vec2(radius, radius) / camera.viewport);
     splats[idx].conic[0] = 0u;
     splats[idx].conic[1] = 0u;
-    let color = vec3<f32>(1.0, 1.0, 1.0);
     splats[idx].color_sh[0] = pack2x16float(vec2<f32>(color.r, color.g));
     splats[idx].color_sh[1] = pack2x16float(vec2<f32>(color.b, opacity));
 
