@@ -88,9 +88,9 @@ fn sh_coef(splat_idx: u32, c_idx: u32) -> vec3<f32> {
     //TODO: access your binded sh_coeff, see load.ts for how it is stored
 
     let max_num_coefs = 16u;
-    let base_idx = splat_idx * max_num_coefs * 3u / 2u;
-
     let coef_offset = c_idx * 3u / 2u;
+    let base_idx = splat_idx * max_num_coefs * 3u / 2u;
+    
     let packed_rg = sh_coeffs[base_idx + coef_offset];
     let packed_b = sh_coeffs[base_idx + coef_offset + 1u];
     let color01 = unpack2x16float(packed_rg);
@@ -262,12 +262,15 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let color = computeColorFromSH(view_dir, idx, u32(render_settings.sh_deg));
 
     splats[idx].pos_size[0] = pack2x16float(pos_ndc.xy);
-
     splats[idx].pos_size[1] = pack2x16float(vec2(radius, radius) / camera.viewport);
-    splats[idx].conic[0] = 0u;
-    splats[idx].conic[1] = 0u;
+
+    let conic = vec3f( covar_2D.z / determinant, -covar_2D.y / determinant, covar_2D.x / determinant);
+    let conic01 = pack2x16float(conic.xy);
+    let conic23 = pack2x16float(vec2(conic.z, 1.0f / (1.0f + exp(-opacity))));
+    splats[idx].conic[0] = conic01;
+    splats[idx].conic[1] = conic23;
     splats[idx].color_sh[0] = pack2x16float(vec2<f32>(color.r, color.g));
-    splats[idx].color_sh[1] = pack2x16float(vec2<f32>(color.b, opacity));
+    splats[idx].color_sh[1] = pack2x16float(vec2<f32>(color.b, 1.0f));
 
     atomicAdd(&sort_infos.keys_size, 1u);
 

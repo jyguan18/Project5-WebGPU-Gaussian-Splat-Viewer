@@ -3,6 +3,8 @@ struct VertexOutput {
     //TODO: information passed from vertex shader to fragment shader
     @location(0) size: vec2<f32>,
     @location(1) color: vec3<f32>,
+    @location(2) conic: vec4<f32>,
+    @location(3) center: vec2<f32>
 };
 struct Splat {
     //TODO: information defined in preprocess compute shader
@@ -11,8 +13,18 @@ struct Splat {
     color_sh: array<u32, 2>,
 };
 
+struct CameraUniforms {
+    view: mat4x4<f32>,
+    view_inv: mat4x4<f32>,
+    proj: mat4x4<f32>,
+    proj_inv: mat4x4<f32>,
+    viewport: vec2<f32>,
+    focal: vec2<f32>
+};
+
 @group(0) @binding(0) var<storage, read> splats: array<Splat>;
 @group(0) @binding(1) var<storage, read> sort_indices: array<u32>;
+@group(0) @binding(2) var<uniform> camera: CameraUniforms;
 
 @vertex
 fn vs_main(
@@ -40,7 +52,16 @@ fn vs_main(
         vec2f(x - w, y + h),
     );
 
+    let conic01 = unpack2x16float(splat.conic[0]);
+    let conic23 = unpack2x16float(splat.conic[1]);
+    let conic = vec3<f32>(conic01.x, conic01.y, conic23.x);
+    let opacity = conic23.y;
+
     var vertex_out: VertexOutput;
+
+    vertex_out.conic = vec4f(conic, opacity);
+
+    vertex_out.center = vec2f(x, y);
 
     vertex_out.position = vec4f(quads[vertex_idx].x, quads[vertex_idx].y, 0.0f, 1.0f);
 
@@ -55,5 +76,22 @@ fn vs_main(
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    return vec4<f32>(in.color, 1.0);
+    var posNdc = (in.position.xy / camera.viewport) * 2.0 - 1.0;
+    posNdc.y = -posNdc.y;
+
+    var offset = posNdc.xy - in.center.xy;
+    offset = vec2f(-offset.x, offset.y) * camera.viewport * 0.5;
+
+    var power = (in.conic.x * pow(offset.x, 2.0) + 
+                in.conic.z * pow(offset.y, 2.0))  * 
+                -0.5f - 
+                in.conic.y * offset.x * offset.y;
+
+    if (power > 0.0) {
+        return vec4<f32>(0.0);
+    }
+
+    let alpha = clamp(in.conic.w * exp(power), 0.0f, 0.99f);
+
+    return vec4<f32>(in.color * alpha, alpha);
 }
