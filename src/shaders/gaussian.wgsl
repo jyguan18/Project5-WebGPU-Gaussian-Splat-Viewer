@@ -65,7 +65,7 @@ fn vs_main(
 
     vertex_out.position = vec4f(quads[vertex_idx].x, quads[vertex_idx].y, 0.0f, 1.0f);
 
-    vertex_out.size = wh;
+    vertex_out.size = (wh * 0.5f + 0.5f) * camera.viewport.xy;
 
     let rg = unpack2x16float(splat.color_sh[0]);
     let ba = unpack2x16float(splat.color_sh[1]);
@@ -76,19 +76,19 @@ fn vs_main(
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-    var posNdc = (in.position.xy / camera.viewport) * 2.0 - 1.0;
-    posNdc.y = -posNdc.y;
+    var pos = (in.position.xy / camera.viewport) * 2.0f - 1.0f;
+    pos.y = -pos.y;
 
-    var offset = posNdc.xy - in.center.xy;
-    offset = vec2f(-offset.x, offset.y) * camera.viewport * 0.5;
+    var offset = pos.xy - in.center.xy;
+    offset = vec2f(-offset.x, offset.y) * camera.viewport * 0.5f;
 
-    var power = (in.conic.x * pow(offset.x, 2.0) + 
-                in.conic.z * pow(offset.y, 2.0))  * 
+    var power = (in.conic.x * pow(offset.x, 2.0f) + 
+                in.conic.z * pow(offset.y, 2.0f))  * 
                 -0.5f - 
                 in.conic.y * offset.x * offset.y;
 
-    if (power > 0.0) {
-        return vec4<f32>(0.0);
+    if (power > 0.0f) {
+        return vec4<f32>(0.0f, 0.0f, 0.0f, 0.0f);
     }
 
     let alpha = clamp(in.conic.w * exp(power), 0.0f, 0.99f);

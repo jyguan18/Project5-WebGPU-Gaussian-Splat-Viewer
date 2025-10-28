@@ -163,11 +163,7 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let pos_clip = camera.proj * pos_view;
 
     // convert to ndc
-    let pos_ndc = pos_clip.xyz / pos_clip.w;
-
-    // convert to screen space
-    let pos_screen = vec2<f32>((pos_ndc.x * 0.5 + 0.5) * camera.viewport.x,
-    (1.0 - (pos_ndc.y * 0.5 + 0.5) * camera.viewport.y));
+    let pos_ndc = pos_clip.xy / pos_clip.w;
 
     if (pos_ndc.x < -1.2f || pos_ndc.x > 1.2f ||
         pos_ndc.y < -1.2f || pos_ndc.y > 1.2f ||
@@ -252,40 +248,30 @@ fn preprocess(@builtin(global_invocation_id) gid: vec3<u32>, @builtin(num_workgr
     let lambda2 = mid - sqrt(max(0.1f, mid * mid - determinant));
     let radius = ceil(3.0f * sqrt(max(lambda1, lambda2)));
 
-
-    // depth for sort
-    let depth = pos_view.z;
-    sort_depths[idx] = bitcast<u32>(100.0f - depth);
-    sort_indices[idx] = idx;
-
     let view_dir = normalize(pos_world.xyz - camera.view_inv[3].xyz);
     let color = computeColorFromSH(view_dir, idx, u32(render_settings.sh_deg));
 
-    splats[idx].pos_size[0] = pack2x16float(pos_ndc.xy);
-    splats[idx].pos_size[1] = pack2x16float(vec2(radius, radius) / camera.viewport);
+    let sortKeysIdx = atomicAdd(&sort_infos.keys_size, 1u);
+
+    splats[sortKeysIdx].pos_size[0] = pack2x16float(pos_ndc.xy);
+    splats[sortKeysIdx].pos_size[1] = pack2x16float(vec2(radius, radius) / camera.viewport);
 
     let conic = vec3f( covar_2D.z / determinant, -covar_2D.y / determinant, covar_2D.x / determinant);
     let conic01 = pack2x16float(conic.xy);
     let conic23 = pack2x16float(vec2(conic.z, 1.0f / (1.0f + exp(-opacity))));
-    splats[idx].conic[0] = conic01;
-    splats[idx].conic[1] = conic23;
-    splats[idx].color_sh[0] = pack2x16float(vec2<f32>(color.r, color.g));
-    splats[idx].color_sh[1] = pack2x16float(vec2<f32>(color.b, 1.0f));
+    splats[sortKeysIdx].conic[0] = conic01;
+    splats[sortKeysIdx].conic[1] = conic23;
+    splats[sortKeysIdx].color_sh[0] = pack2x16float(vec2<f32>(color.r, color.g));
+    splats[sortKeysIdx].color_sh[1] = pack2x16float(vec2<f32>(color.b, 1.0f));
 
-    atomicAdd(&sort_infos.keys_size, 1u);
+    // depth for sort
+    let depth = pos_view.z;
+    sort_depths[sortKeysIdx] = bitcast<u32>(100.0f - depth);
+    sort_indices[sortKeysIdx] = sortKeysIdx;
 
     let keys_per_dispatch = workgroupSize * sortKeyPerThread;
 
-    if (idx % keys_per_dispatch == 0u) {
+    if (sortKeysIdx % keys_per_dispatch == 0u) {
         atomicAdd(&sort_dispatch.dispatch_x, 1u);
-    }
-
-    // increment DispatchIndirect.dispatchx each time you reach limit for one dispatch of keys
-
-    let view = camera.view;
-    let pos_opacity = gaussians[idx].pos_opacity;
-    let passes = sort_infos.passes;
-    let sort_depth = sort_depths[0];
-    let sort_index = sort_indices[0];
-    let dispatch_z = sort_dispatch.dispatch_z;
+    }    
 }
